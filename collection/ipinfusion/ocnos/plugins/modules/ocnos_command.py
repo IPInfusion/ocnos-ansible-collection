@@ -160,7 +160,7 @@ import time
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import run_commands
-from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import ocnos_provider_spec
+from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import ocnos_provider_spec,ocnos_arguement_spec
 from ansible.module_utils.network.common.parsing import Conditional
 from ansible.module_utils.six import string_types
 from ansible.module_utils.connection import ConnectionError

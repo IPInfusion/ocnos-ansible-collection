@@ -106,9 +106,9 @@ rtt:
 '''
 
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.network.ocnos.ocnos import run_commands
-from ansible.module_utils.network.ocnos.ocnos import get_connection
-from ansible.module_utils.network.ocnos.ocnos import ocnos_argument_spec
+from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import run_commands
+from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import get_connection
+from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import ocnos_argument_spec
 import re
 
 
