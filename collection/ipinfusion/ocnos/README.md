@@ -21,7 +21,7 @@ Once downloaded the OcNOS collection package, run ansible-galaxy command as foll
 $ ansible-galaxy collection install ipinfusion-ocnos-1.x.x.tar.gz       
 Process install dependency map
 Starting collection install process
-Installing 'ipinfusion.ocnos:1.0.0' to '/home/<someones home>/.ansible/collections/ansible_collections/ipinfusion/ocnos'
+Installing 'ipinfusion.ocnos:1.x.x' to '/home/<someones home>/.ansible/collections/ansible_collections/ipinfusion/ocnos'
 ```
 
 ## Using with ansible playbook
