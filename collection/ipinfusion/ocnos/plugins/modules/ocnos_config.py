@@ -28,7 +28,7 @@ DOCUMENTATION = """
 ---
 module: ocnos_config
 version_added: "2.10"
-author: "Tsuyoshi MOMOSE (@momose)"
+author: "IP Infusion OcNOS Ansible Development Team"
 short_description: Manage IP Infusion OcNOS configuration sections
 description:
   - IP Infusion OcNOS configurations use a simple block indent file syntax
@@ -171,23 +171,23 @@ options:
 
 EXAMPLES = """
 - name: configure top level configuration
-  ocnos_config:
+  ipinfusion.ocnos.ocnos_config:
     lines: "hostname {{ inventory_hostname }}"
 
 - name: configure interface settings
-  ocnos_config:
+  ipinfusion.ocnos.ocnos_config:
     lines:
       - description test interface set by ansible
       - ip address 172.16.100.1/24
     parents: interface eth2
 
 - name: load a config from disk and replace the current config
-  ocnos_config:
+  ipinfusion.ocnos.ocnos_config:
     src: config.cfg
     backup: yes
 
 - name: configurable backup path
-  ocnos_config:
+  ipinfusion.ocnos.ocnos_config:
     src: config.cfg
     backup: yes
     backup_options:
@@ -212,7 +212,6 @@ from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import run_
 from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import ocnos_argument_spec, check_args
 from ansible.module_utils.network.common.config import NetworkConfig, dumps
 
-
 def get_running_config(module):
     contents = module.params['running_config']
     if not contents:
@@ -233,7 +232,7 @@ def save_config(module, result):
 def get_candidate(module):
     candidate = NetworkConfig(indent=1)
     if module.params['src']:
-        candidate.load(module.params['src'])
+        candidate.loadfp(module.params['src'])
     elif module.params['lines']:
         parents = module.params['parents'] or list()
         candidate.add(module.params['lines'], parents=parents)

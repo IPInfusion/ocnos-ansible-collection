@@ -19,8 +19,7 @@ description:
 - For a general purpose network module, see the M(net_ping) module.
 - For Windows targets, use the M(win_ping) module instead.
 - For targets running Python, use the M(ping) module instead.
-author:
-- Tsuyoshi MOMOSE (@momose)
+author: "IP Infusion OcNOS Ansible Development Team"
 version_added: '2.10'
 extends_documentation_fragment: ocnos
 options:

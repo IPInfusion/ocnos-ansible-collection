@@ -28,7 +28,7 @@ DOCUMENTATION = """
 ---
 module: ocnos_command
 version_added: "2.10"
-author: "Tsuyoshi MOMOSE (@momose)"
+author: "IP Infusion OcNOS Ansible Development Team"
 short_description: Run arbitrary commands on IP Infusion OcNOS
 description:
   - Sends arbitrary commands to an OcNOS node and returns the results

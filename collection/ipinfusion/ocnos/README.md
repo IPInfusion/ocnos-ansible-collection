@@ -18,7 +18,7 @@ $ ansible-galaxy collection install ipinfusion.ocnos
 Also, it's possible to install it from downloaded tarball.
 Once downloaded the OcNOS collection package, run ansible-galaxy command as follows
 ```
-$ ansible-galaxy collection install ipinfusion-ocnos-1.0.0.tar.gz       
+$ ansible-galaxy collection install ipinfusion-ocnos-1.x.x.tar.gz       
 Process install dependency map
 Starting collection install process
 Installing 'ipinfusion.ocnos:1.0.0' to '/home/<someones home>/.ansible/collections/ansible_collections/ipinfusion/ocnos'
@@ -26,6 +26,17 @@ Installing 'ipinfusion.ocnos:1.0.0' to '/home/<someones home>/.ansible/collectio
 
 ## Using with ansible playbook
 The module name is used as ipinfusion.ocnos.<module>.
+
+And you need some ansible vars properly.
+The following shows an example of group_vars/ocnos.yml
+```
+ansible_connection: network_cli
+ansible_network_os: ipinfusion.ocnos.ocnos
+ansible_become: yes
+ansible_become_method: enable
+ansible_ssh_user: ocnos
+ansible_ssh_pass: ocnos
+```
 
 Examble of a playbook
 ```
@@ -58,6 +69,12 @@ ocnos_config sends commands for configuration which are available on configure m
 
 ## ocnos_ping
 ocnos_ping does ping from the target node to another node. This module will fail when the ping was not suceeded.
+
+## ocnos_bgp_facts
+ocnos_bgp_facts collects information about BGP. Currently, this modules supports only bgp neighbor.
+
+## ocnos_isis_facts
+ocnos_isis_facts collects information about ISIS. Currently, this modules supports only ISIS neighbor.
 
 
 Please refer the IPI provided documents for the detail.

@@ -28,7 +28,9 @@ class TerminalModule(TerminalBase):
     terminal_stdout_re = [
         re.compile(br"[\r\n]?[\w+\-\.:\/\[\]]+(?:\([^\)]+\)){,3}(?:>|#) ?$"),
         re.compile(br"\[\w+\@[\w\-\.]+(?: [^\]])\] ?[>#\$] ?$"),
-        re.compile(br">[\r\n]?")
+        re.compile(br">[\r\n]?"),
+#        re.compile(br"% Incomplete command")
+#        re.compile(br"[\r\n]?% Incomplete command.*[\r\n]+[\w+\-\.:\/\[\]]+(?:\([^\)]+\)){,3}(?:>|#) ?$"),
     ]
 
     terminal_stderr_re = [
@@ -37,7 +39,8 @@ class TerminalModule(TerminalBase):
         re.compile(br"connection timed out", re.I),
         re.compile(br"[^\r\n]+ not found"),
         re.compile(br"'[^']' +returned error code: ?\d+"),
-        re.compile(br"\r\n% (?:Incomplete|Unrecognized) command", re.I),
+#        re.compile(br"\r\n% (?:Incomplete|Unrecognized) command", re.I),
+        re.compile(br"\r\n% Unrecognized command", re.I),
         re.compile(br"\r\n% Invalid input", re.I),
         re.compile(br"% Running configuration store is locked by other client"),
         re.compile(br"\r\n%% (?!System Reboot required,|Filter group is already enabled|Existing Router ID in use, Use).*"),
