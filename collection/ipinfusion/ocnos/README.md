@@ -10,6 +10,8 @@ Ansible 2.9 or newer.
 # Using OcNOS collection Modules
 
 ## Install
+You can install OcNOS collection modules as either way.
+
 To install from Galaxy,
 ```
 $ ansible-galaxy collection install ipinfusion.ocnos
@@ -24,6 +26,9 @@ Starting collection install process
 Installing 'ipinfusion.ocnos:1.x.x' to '/home/<someones home>/.ansible/collections/ansible_collections/ipinfusion/ocnos'
 ```
 
+During installing the modules, it installs other collections like ansible.netcommon and ansible.utils by its dependencies.
+If you are installing on somewhere the internet unreachable, you may need to install the dependent collections by manual.
+ 
 ## Using with ansible playbook
 The module name is used as ipinfusion.ocnos.<module>.
 
@@ -79,3 +84,10 @@ ocnos_isis_facts collects information about ISIS. Currently, this modules suppor
 
 Please refer the IPI provided documents for the detail.
 
+# Version history
+1.1.0 Works with Ansible 2.10
+1.0.4 Fixed some nit bugs
+1.0.3 ocnos_bgp_facts and ocnos_isis_facts are supported
+1.0.2 Fixed some nit bugs
+1.0.1 Fixed some nit bugs that some modules didn't work as collection
+1.0.0 Initial version

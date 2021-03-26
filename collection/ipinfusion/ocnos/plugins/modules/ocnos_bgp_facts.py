@@ -25,8 +25,34 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 
 DOCUMENTATION = '''
 ---
+module: ocnos_bgp_facts
+version_added: "2.9"
+author: "IP Infusion OcNOS Ansible Development Team"
+short_description: Collect BGP status
+description:
+  - Collets the current BGP status from IP Infusion OcNOS. The 
+    current version only supports BGP neighbor status.
+    The BGP neighbor status is collected by OcNOS 'show bgp neighbor'
+    command and be prepended to C(ansible_net_bgp_neighbor).
+'''
+EAMPLES = '''
+The following is an example of using the module ocnos_bgp_facts.
+---
+  - name: Test BGP neighbor
+    ipinfusion.ocnos.ocnos_bgp_facts:
+      gather_subset: neighbor
+    register: result
+
+  - name: Show bgp Facts
+    debug:
+      msg: "{{ result }}"
+
 '''
 RETURN = '''
+  ansible_net_bgp_neighbor:
+    description: BGP neighbor status collected from the device
+    returned: alwas
+    type: dict
 '''
 
 import re

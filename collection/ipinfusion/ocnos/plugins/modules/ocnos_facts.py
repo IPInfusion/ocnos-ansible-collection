@@ -56,36 +56,21 @@ Tasks: The following are examples of using the module ocnos_facts.
 ---
 - name: Test OcNOS Facts
   ocnos_facts:
-    provider={{ cli }}
-
-  vars:
-    cli:
-      host: "{{ inventory_hostname }}"
-      port: 22
-      username: ocnos
-      password: ocnos
-      transport: cli
-      timeout: 30
-      authorize: True
-      auth_pass:
 
 ---
 # Collect all facts from the device
 - ocnos_facts:
     gather_subset: all
-    provider: "{{ cli }}"
 
 # Collect only the config and default facts
 - ocnos_facts:
     gather_subset:
       - config
-    provider: "{{ cli }}"
 
 # Do not collect hardware facts
 - ocnos_facts:
     gather_subset:
       - "!hardware"
-    provider: "{{ cli }}"
 
 '''
 RETURN = '''

@@ -27,7 +27,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 DOCUMENTATION = """
 ---
 module: ocnos_config
-version_added: "2.10"
+version_added: "2.9"
 author: "IP Infusion OcNOS Ansible Development Team"
 short_description: Manage IP Infusion OcNOS configuration sections
 description:
@@ -210,7 +210,7 @@ backup_path:
 from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import run_commands, load_config, get_config
 from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import ocnos_argument_spec, check_args
-from ansible.module_utils.network.common.config import NetworkConfig, dumps
+from ansible_collections.ansible.netcommon.plugins.module_utils.network.common.config import NetworkConfig, dumps
 
 def get_running_config(module):
     contents = module.params['running_config']

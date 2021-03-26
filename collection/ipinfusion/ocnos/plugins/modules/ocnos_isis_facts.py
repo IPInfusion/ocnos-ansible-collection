@@ -25,8 +25,34 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 
 DOCUMENTATION = '''
 ---
+module: ocnos_isis_facts
+version_added: "2.9"
+author: "IP Infusion OcNOS Ansible Development Team"
+short_description: Collect ISIS status
+description:
+  - Collets the current ISIS status from IP Infusion OcNOS. The 
+    current version only supports ISIS neighbor status.
+    The ISIS neighbor status is collected by OcNOS 'show clns neighbors'
+    command and be prepended to C(ansible_net_isis_neighbor).
+'''
+EAMPLES = '''
+The following is an example of using the module ocnos_isis_facts.
+---
+  - name: Test ISIS neighbor
+    ipinfusion.ocnos.ocnos_isis_facts:
+      gather_subset: neighbor
+    register: result
+
+  - name: Show ISIS Facts
+    debug:
+      msg: "{{ result }}"
+
 '''
 RETURN = '''
+  ansible_net_isis_neighbor:
+    description: ISIS neighbor status collected from the device
+    returned: alwas
+    type: dict
 '''
 import re
 from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import run_commands, ocnos_argument_spec, check_args

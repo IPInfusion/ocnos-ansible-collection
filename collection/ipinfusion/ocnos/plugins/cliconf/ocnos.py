@@ -31,8 +31,8 @@ from itertools import chain
 
 from ansible.module_utils._text import to_bytes, to_text
 from ansible.module_utils.common._collections_compat import Mapping
-from ansible.module_utils.network.common.config import NetworkConfig, dumps
-from ansible.module_utils.network.common.utils import to_list
+from ansible_collections.ansible.netcommon.plugins.module_utils.network.common.config import NetworkConfig, dumps
+from ansible_collections.ansible.netcommon.plugins.module_utils.network.common.utils import to_list
 from ansible.plugins.cliconf import CliconfBase, enable_mode
 from ansible.errors import AnsibleConnectionFailure
 
