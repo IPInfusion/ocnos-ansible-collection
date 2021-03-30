@@ -30,7 +30,7 @@ version_added: "2.9"
 author: "IP Infusion OcNOS Ansible Development Team"
 short_description: Collect BGP status
 description:
-  - Collets the current BGP status from IP Infusion OcNOS. The 
+  - Collets the current BGP status from IP Infusion OcNOS. The
     current version only supports BGP neighbor status.
     The BGP neighbor status is collected by OcNOS 'show bgp neighbor'
     command and be prepended to C(ansible_net_bgp_neighbor).

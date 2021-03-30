@@ -30,7 +30,7 @@ version_added: "2.9"
 author: "IP Infusion OcNOS Ansible Development Team"
 short_description: Collect ISIS status
 description:
-  - Collets the current ISIS status from IP Infusion OcNOS. The 
+  - Collets the current ISIS status from IP Infusion OcNOS. The
     current version only supports ISIS neighbor status.
     The ISIS neighbor status is collected by OcNOS 'show clns neighbors'
     command and be prepended to C(ansible_net_isis_neighbor).

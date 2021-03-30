@@ -16,7 +16,7 @@ description: "A collection for IP Infusion Whitebox Switch OS, OcNOS."
 license:
 - "GPL-3.0-or-later"
 
-tags: 
+tags:
 - "nos"
 - "ipinfusion"
 - "ocnos"

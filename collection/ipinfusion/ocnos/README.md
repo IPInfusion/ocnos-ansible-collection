@@ -28,7 +28,7 @@ Installing 'ipinfusion.ocnos:1.x.x' to '/home/<someones home>/.ansible/collectio
 
 During installing the modules, it installs other collections like ansible.netcommon and ansible.utils by its dependencies.
 If you are installing on somewhere the internet unreachable, you may need to install the dependent collections by manual.
- 
+
 ## Using with ansible playbook
 The module name is used as ipinfusion.ocnos.<module>.
 
