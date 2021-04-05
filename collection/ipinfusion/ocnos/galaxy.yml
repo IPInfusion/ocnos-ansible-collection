@@ -1,0 +1,29 @@
+### REQUIRED
+
+namespace: "ipinfusion"
+name: "ocnos"
+version: "1.1.0"
+readme: "README.md"
+
+authors:
+- "OcNOS Ansible modules development team"
+
+
+### OPTIONAL but strongly recommended
+
+description: "A collection for IP Infusion Whitebox Switch OS, OcNOS."
+
+license:
+- "GPL-3.0-or-later"
+
+tags:
+- "nos"
+- "ipinfusion"
+- "ocnos"
+- "networking"
+
+dependencies:
+  "ansible.netcommon": ">=1.0.0"
+
+repository: "https://github.com/IPInfusion/ocnos-ansible-collection"
+
