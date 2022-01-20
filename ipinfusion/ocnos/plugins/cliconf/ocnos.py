@@ -36,6 +36,35 @@ from ansible_collections.ansible.netcommon.plugins.module_utils.network.common.u
 from ansible.plugins.cliconf import CliconfBase, enable_mode
 from ansible.errors import AnsibleConnectionFailure
 
+ignored_errors = [
+        re.compile(r"%% L2/L3 mode cannot be explicitly configured on aggregator interfaces"),
+        re.compile(r"%% Configuration already exists"),
+        re.compile(r"%% VLAN with the same name exists"),
+        re.compile(r"%% Port is already aggregated"),
+        re.compile(r"%% Cannot configure member interface of port-channel"),
+        re.compile(r"%% VLAN/Range Incorrect.Uncreated vlan/s cannot be delete"),
+        re.compile(r"%% IP address, if configured, removed due to disabling VRF"),
+        re.compile(r"%% BGP is already running,"),
+        re.compile(r"%% Bridge 1 already exists "),
+        re.compile(r"%% Cannot configure, Remove VRF first"),
+        re.compile(r"%% DHCP Client Feature is already Disabled."),
+        re.compile(r"%% Extended asn capability is already enabled"),
+        re.compile(r"%% Given configuration is already applied on agent/system"),
+        re.compile(r"%% Interface already in breakout mode"),
+        re.compile(r"%% L2/L3 mode cannot be explicitly configured on aggregator interfaces with member"),
+        re.compile(r"%% Link not bound to channel-group"),
+        re.compile(r"% Parameter not configured"),
+        re.compile(r"%% Port is already aggregated. "),
+        re.compile(r"%% QoS is already enabled"),
+        re.compile(r"%% Statistics is already enabled"),
+        re.compile(r"%% This filter group is already enabled"),
+        re.compile(r"%% This set value must be unique"),
+        re.compile(r"%% RT cannot be configured without RD configured"),
+        re.compile(r"%%VNID already mapped to access-if"),
+        re.compile(r"%% All dynamic routes on this physical port will be lost due to this ESI/system mac change"),
+]
+
+
 
 class Cliconf(CliconfBase):
 
@@ -66,7 +95,7 @@ class Cliconf(CliconfBase):
     def get_device_operations(self):
         return {
             'supports_diff_replace': True,
-            'supports_commit': False,
+            'supports_commit': True,
             'supports_rollback': False,
             'supports_defaults': False,
             'supports_onbox_diff': False,
@@ -112,9 +141,50 @@ class Cliconf(CliconfBase):
         resp = {}
         results = []
         requests = []
-        for cmd in chain(['configure terminal'], to_list(candidate), ['end']):
-            results.append(self.send_command(cmd))
-            requests.append(cmd)
+        for cmd in chain(['configure terminal'], to_list(candidate)):
+            #results.append(self.send_command(cmd))
+            #requests.append(cmd)
+            try:
+                requests.append(cmd)
+                result = self.send_command(cmd)
+                results.append(result)
+            except AnsibleConnectionFailure as e:
+                pass
+                ignored = False
+                for regex in ignored_errors:
+                    match = regex.search(str(e))
+                    if match:
+                        ignored = True
+                        results.append("IGNORED %s" % str(e))
+                        break
+
+                if not ignored:
+                    raise e
+                    #results.append("ERROR %s" % str(e))
+                    #pass
+
+        ignored = True
+        if commit:
+            commitresult = self.send_command('commit')
+            if '% Failed to commit' in commitresult:
+                ignored = False
+                for regex in ignored_errors:
+                    if regex.search(commitresult):
+                        ignored = True
+                        results.append("IGNORED %s" % commitresult)
+                        break
+
+        endresult = self.send_command('end')
+
+        if '%% Un-committed transactions present' in endresult:
+            self.send_command('abort transaction')
+            self.send_command('end')
+
+        if commit and not ignored:
+            raise AnsibleConnectionFailure
+            #results.append("ERROR %s" % str(e))
+            #pass
+
         resp['request'] = requests
         resp['response'] = results
         return resp

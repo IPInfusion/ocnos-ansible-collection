@@ -137,11 +137,11 @@ def run_commands(module, commands, check_rc=True):
     return responses
 
 
-def load_config(module, config):
+def load_config(module, config, commit=False):
     try:
         conn = get_connection(module)
         conn.get('enable')
-        resp = conn.edit_config(config)
+        resp = conn.edit_config(config, commit=commit)
         return resp.get('response')
     except ConnectionError as exc:
         module.fail_json(msg=to_text(exc))

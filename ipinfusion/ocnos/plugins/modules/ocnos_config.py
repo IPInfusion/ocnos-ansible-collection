@@ -269,7 +269,7 @@ def run(module, result):
 
             result['commands'] = commands
 
-        diff = load_config(module, commands)
+        diff = load_config(module, commands, commit=module.params['commit'])
         if diff:
             result['diff'] = dict(prepared=diff)
             result['changed'] = True
@@ -300,6 +300,7 @@ def main():
     )
     argument_spec = dict(
         src=dict(type='path'),
+        commit=dict(type='bool', default=True),
 
         lines=dict(aliases=['commands'], type='list'),
         parents=dict(type='list'),

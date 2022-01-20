@@ -24,31 +24,36 @@ from ansible.plugins.terminal import TerminalBase
 
 
 class TerminalModule(TerminalBase):
+    # If terminal_stderr_re matches is an errored_response
+    #    raise AnsibleConnectionFailure(errored_response)
+    #
+    # If terminal_stdout_re matches, is a prompt
+    #    self._matched_pattern = regex.pattern
+    #    self._matched_prompt = match.group()
 
+    # Prompts
     terminal_stdout_re = [
         re.compile(br"[\r\n]?[\w+\-\.:\/\[\]]+(?:\([^\)]+\)){,3}(?:>|#) ?$"),
         re.compile(br"\[\w+\@[\w\-\.]+(?: [^\]])\] ?[>#\$] ?$"),
-        re.compile(br">[\r\n]?"),
-#        re.compile(br"% Incomplete command")
-#        re.compile(br"[\r\n]?% Incomplete command.*[\r\n]+[\w+\-\.:\/\[\]]+(?:\([^\)]+\)){,3}(?:>|#) ?$"),
+        re.compile(br">[\r\n]?")
     ]
 
+    # Errors
     terminal_stderr_re = [
         re.compile(br"% ?Error"),
         re.compile(br"% ?Bad secret"),
         re.compile(br"connection timed out", re.I),
         re.compile(br"[^\r\n]+ not found"),
         re.compile(br"'[^']' +returned error code: ?\d+"),
-#        re.compile(br"\r\n% (?:Incomplete|Unrecognized) command", re.I),
-        re.compile(br"\r\n% Unrecognized command", re.I),
+        re.compile(br"\r\n% (?:Incomplete|Unrecognized) command", re.I),
         re.compile(br"\r\n% Invalid input", re.I),
         re.compile(br"% Running configuration store is locked by other client"),
-        re.compile(br"\r\n%% (?!System Reboot required,|Filter group is already enabled|Existing Router ID in use, Use).*"),
+        re.compile(br"\r\n%% (?!System Reboot required,|Filter group is already enabled|Existing Router ID in use, Use|Un-committed transactions present).*"),
     ]
 
     def on_open_shell(self):
         try:
-            for cmd in (b'\n', b'terminal length 0\n'):
+            for cmd in (b'\n', b'terminal no monitor\n', b'terminal length 0\n'):
                 self._exec_cli_command(cmd)
         except AnsibleConnectionFailure:
             raise AnsibleConnectionFailure('unable to set terminal parameters')

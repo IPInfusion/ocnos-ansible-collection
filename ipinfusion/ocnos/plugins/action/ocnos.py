@@ -20,7 +20,7 @@ import sys
 import copy
 
 from ansible import constants as C
-from ansible.plugins.action.network import ActionModule as ActionNetworkModule
+from ansible_collections.ansible.netcommon.plugins.action.network import ActionModule as ActionNetworkModule
 from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import ocnos_provider_spec
 from ansible_collections.ansible.netcommon.plugins.module_utils.network.common.utils import load_provider
 from ansible.module_utils.connection import Connection
@@ -35,7 +35,7 @@ class ActionModule(ActionNetworkModule):
     def run(self, tmp=None, task_vars=None):
         del tmp  # tmp no longer has any effect
 
-        self._config_module = True if self._task.action == 'ocnos_config' else False
+        self._config_module = True if '_config' in self._task.action else False
         socket_path = None
         if self._play_context.connection == 'local':
             provider = load_provider(ocnos_provider_spec, self._task.args)

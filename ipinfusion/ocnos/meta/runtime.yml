@@ -1,0 +1,12 @@
+---
+requires_ansible: '>=2.9.10'
+plugin_routing:
+  action:
+    ocnos_config:
+      redirect: ipinfusion.ocnos.ocnos
+    config:
+      redirect: ipinfusion.ocnos.ocnos
+  modules:
+    config:
+      redirect: ipinfusion.ocnos.ocnos_config
+
