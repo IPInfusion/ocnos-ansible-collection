@@ -208,6 +208,7 @@ backup_path:
   sample: /playbooks/ansible/backup/ocnos01.2019-07-16@22:28:34
 """
 import os
+import re
 from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import run_commands, load_config, get_config
 from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import ocnos_argument_spec, check_args
@@ -252,7 +253,6 @@ def run(module, result):
     check_mode = module.check_mode
 
     candidate = get_candidate(module)
-
     if match != 'none' and replace != 'config':
         contents = get_running_config(module)
         configobj = NetworkConfig(contents=contents, indent=1)
@@ -274,7 +274,30 @@ def run(module, result):
             result['commands'] = commands
 
         diff = load_config(module, commands, commit=module.params['commit'])
-        if diff:
+        if diff_ignore_lines:
+            final_diff =[]
+            for each_line in diff:
+                final_diff.append(each_line)
+            debug=[]
+            for each_ignore_line in diff_ignore_lines.split("|"):
+              check_for_diff = 1
+              debug.append(diff)
+              for each_diff_line in final_diff:
+                 if each_diff_line in diff:
+                   if re.search(each_ignore_line, each_diff_line):
+                      check_for_diff = 0
+                   debug.append(each_diff_line)
+                   if str(each_ignore_line) in str(each_diff_line):
+                      check_for_diff = 0
+                   elif each_diff_line.find(each_ignore_line) != -1:
+                      check_for_diff = 0
+                   if check_for_diff == 0:
+                     diff.remove(each_diff_line)
+                     check_for_diff = 1
+
+            result['diff'] = dict(prepared=diff)
+            result['changed'] = True
+        else:
             result['diff'] = dict(prepared=diff)
             result['changed'] = True
 
@@ -319,7 +342,7 @@ def main():
         backup=dict(type='bool', default=False),
         backup_options=dict(type='dict', options=backup_spec),
         save_when=dict(choices=['always', 'never', 'modified', 'changed'], default='never'),
-        diff_ignore_lines=dict(type='list'),
+        diff_ignore_lines=dict(type='str',default=""),
     )
 
     argument_spec.update(ocnos_argument_spec)
@@ -346,7 +369,6 @@ def main():
         result['__backup__'] = get_config(module)
 
     run(module, result)
-
     module.exit_json(**result)
 
 
