@@ -365,7 +365,6 @@ class Config(FactsBase):
 class Interfaces(FactsBase):
 
     COMMANDS = [
-        'show interface',
         'show interface brief',
         'show lldp neighbors detail',
         'show interface counters',
@@ -379,12 +378,12 @@ class Interfaces(FactsBase):
         self.facts['all_ipv4_addresses'] = list()
         self.facts['all_ipv6_addresses'] = list()
 
-        data_interface = self.responses[0]
-        data_interface_br = self.responses[1]
-        data_neigh_detail = self.responses[2]
-        data_interface_counter = self.responses[3]
-        data_interface_transceiver = self.responses[4]
-        data_interface_lagg = self.responses[5]
+        data_interface_br = self.responses[0]
+        data_interface = self.populate_interface_foreach(data_interface_br)
+        data_neigh_detail = self.responses[1]
+        data_interface_counter = self.responses[2]
+        data_interface_transceiver = self.responses[3]
+        data_interface_lagg = self.responses[4]
         if data_interface and data_interface_br:
             interfaces = self.parse_interfaces(data_interface, data_interface_br, data_interface_counter, data_interface_transceiver)
             self.facts['interfaces'] = self.populate_interfaces(interfaces)
@@ -405,6 +404,20 @@ class Interfaces(FactsBase):
             facts[key] = neigh
 
         return facts
+
+    '''
+    Interface information are retrieved one by one for each interface
+    since some ssh transport can't handle sometimes the result of 'show interface' by its volume
+    '''
+    def populate_interface_foreach(self, interfaces_br):
+        interfaces = ''
+        for line in interfaces_br.split('\n'):
+            match = re.match(r'^(\S+).*(up|down)', line)
+            if match:
+                int_name = match.group(1)
+                interface = run_commands(self.module, "show int " + int_name, check_rc=False)
+                interfaces += interface[0] + '\n\n'
+        return interfaces
 
     def populate_interfaces(self, interfaces):
         facts = dict()
@@ -610,7 +623,7 @@ class Interfaces(FactsBase):
             if line[0] == ' ':
                 parsed[key] += '\n%s' % line
             else:
-                match = re.match(r'^Interface (.*)', line)
+                match = re.match(r'^Interface\s+(.*)', line)
                 if match:
                     key = match.group(1)
                     parsed[key] = line
@@ -644,7 +657,7 @@ class Interfaces(FactsBase):
                 if (match):
                     skip = False
                 continue
-                
+
             match = re.match(r'^(\S+)\s+(.*)$', line)
             if match:
                 key = match.group(1)

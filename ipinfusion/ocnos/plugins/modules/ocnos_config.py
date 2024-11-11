@@ -207,6 +207,7 @@ backup_path:
   type: str
   sample: /playbooks/ansible/backup/ocnos01.2019-07-16@22:28:34
 """
+import os
 from ansible.module_utils.basic import AnsibleModule
 from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import run_commands, load_config, get_config
 from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import ocnos_argument_spec, check_args
@@ -232,7 +233,10 @@ def save_config(module, result):
 def get_candidate(module):
     candidate = NetworkConfig(indent=1)
     if module.params['src']:
-        candidate.loadfp(module.params['src'])
+        if os.path.isfile(module.params['src']):
+            candidate.loadfp(module.params['src'])
+        else:
+            candidate.load(module.params['src'])
     elif module.params['lines']:
         parents = module.params['parents'] or list()
         candidate.add(module.params['lines'], parents=parents)

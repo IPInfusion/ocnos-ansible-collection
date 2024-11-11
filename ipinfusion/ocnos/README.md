@@ -2,9 +2,7 @@
 
 Ansible collection for automating IP Infusion OcNOS.
 
-OcNOS is a network OS for White Box switch. Refer https://www.ipinfusion.com/products/ocnos/ for the detail.
-
-OcNOS Ansible Collection can be installed via https://galaxy.ansible.com/ipinfusion/ocnos.
+OcNOS is a network OS for White Box switch. Refer [https://www.ipinfusion.com/products/ocnos/] for the detail.
 
 # Requirements
 Ansible 2.9 or newer.
@@ -61,6 +59,18 @@ Examble of a playbook
       msg: The version is {{ ansible_net_version }}. HW model is {{ ansible_net_model }}, Neighbor info is {{ ansible_net_neighbors }}
 ```
 
+When you use OcNOS version 5.0 or later, please specify 'commit' variable as well for configuration switches.
+The default value is 'true'.
+```
+---
+- hosts: ocnos
+
+  tasks:
+  - name: Set hostname
+    ipinfusion.ocnos.ocnos_config:
+      lines: 'hostname helloworld'
+      commit: yes
+```
 
 # Supported Modules
 
@@ -85,3 +95,27 @@ ocnos_isis_facts collects information about ISIS. Currently, this modules suppor
 
 
 Please refer the IPI provided documents for the detail.
+
+# Version history
+- 1.2.3
+  - Avoid error when ocnos_facts is used with ansible_pylibssh
+- 1.2.2
+  - Fixed to work "src': parameter for both 2.9 after
+- 1.2.1
+  - Fixed to work "src:" parameter of ocnos_config 
+- 1.2.0 
+  - Merged WhiteStack contribution which handles error messages correctly.
+  - Works with OcNOS 5.0.
+  - Fixed to work 'backup'
+- 1.1.0
+  - Works with Ansible 2.10
+- 1.0.4
+  - Fixed some nit bugs
+- 1.0.3
+  - ocnos_bgp_facts and ocnos_isis_facts are supported
+- 1.0.2
+  - Fixed some nit bugs
+- 1.0.1
+  - Fixed some nit bugs that some modules didn't work as collection
+- 1.0.0
+  - Initial version
