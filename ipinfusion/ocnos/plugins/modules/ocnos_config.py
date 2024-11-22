@@ -35,7 +35,7 @@ description:
     for segmenting configuration into sections.  This module provides
     an implementation for working with OcNOS configuration sections in
     a deterministic way.
-extends_documentation_fragment: ocnos
+extends_documentation_fragment: ipinfusion.ocnos.ocnos
 notes:
   - Tested against OcNOS 1.3.8
 options:
