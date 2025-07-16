@@ -29,7 +29,7 @@ Starting collection install process
 Installing 'ipinfusion.ocnos:1.x.x' to '/home/<someones home>/.ansible/collections/ansible_collections/ipinfusion/ocnos'
 ```
 
-During the installation of the modules, it installs other collections such as ansible.netcommon and ansible.utils by its dependencies.
+During the installation of the modules, other collections may install such as ansible.netcommon and ansible.utils as dependencies.
 
 If there is no external connectivity, it may be required to install the dependent collections manually.
 
