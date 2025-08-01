@@ -37,7 +37,7 @@ description:
     and can enable or disable collection of additional facts.
 extends_documentation_fragment: ocnos
 notes:
-  - Tested against OcNOS 1.3.9
+  - Tested against OcNOS 6.x
 options:
   gather_subset:
     description:
@@ -98,7 +98,7 @@ RETURN = '''
 # hardware
   ansible_net_serialnum:
     description: The serial number of the IP Infusion OcNOS running device
-    returned: always
+    returned: when hardware is configured
     type: str
   ansible_net_memfree_mb:
     description: The available free memory on the remote device in MB
@@ -151,7 +151,7 @@ RETURN = '''
 '''
 
 import re
-import copy
+import traceback
 
 from ansible_collections.ipinfusion.ocnos.plugins.module_utils.ocnos import run_commands, ocnos_argument_spec, check_args
 from ansible.module_utils._text import to_text
@@ -159,6 +159,7 @@ from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.six import iteritems
 from ansible.module_utils.six.moves import zip
 from ansible.module_utils.connection import ConnectionError
+
 
 
 class FactsBase(object):
@@ -169,14 +170,58 @@ class FactsBase(object):
         self.module = module
         self.facts = dict()
         self.responses = None
-        self.PERSISTENT_COMMAND_TIMEOUT = 60
+        self.warnings = []
 
     def populate(self):
-        self.responses = run_commands(self.module, self.COMMANDS,
-                                      check_rc=False)
+        try:
+            self.responses = []
+            for cmd in self.COMMANDS:
+                try:
+                    output = run_commands(self.module, [cmd], check_rc=False)
+                    if output and isinstance(output[0], str):
+                        if "Command not supported" in output[0]:
+                            self.warnings.append(f"Command not supported: {cmd}")
+                            self.responses.append(None)
+                            continue
+                    self.responses.extend(output)
+                except ConnectionError as exc:
+                    self.warnings.append(f"Failed to execute command '{cmd}': {str(exc)}")
+                    self.responses.append(None)
+                except Exception as exc:
+                    self.warnings.append(f"Unexpected error executing command '{cmd}': {str(exc)}")
+                    self.responses.append(None)
+        except Exception as exc:
+            self.module.fail_json(msg=f"Unexpected error during command execution: {str(exc)}")
 
     def run(self, cmd):
-        return run_commands(self.module, cmd, check_rc=False)
+        try:
+            output = run_commands(self.module, [cmd], check_rc=False)
+            if output and isinstance(output[0], str) and "Command not supported" in output[0]:
+                self.warnings.append(f"Command not supported: {cmd}")
+                return None
+            return output[0] if output else None
+        except ConnectionError as exc:
+            self.warnings.append(f"Failed to execute command '{cmd}': {str(exc)}")
+            return None
+        except Exception as exc:
+            self.warnings.append(f"Unexpected error executing command '{cmd}': {str(exc)}")
+            return None
+
+    def safe_parse_int(self, value, default="N/A"):
+        try:
+            return int(value.strip()) if value else default
+        except (ValueError, AttributeError):
+            return default
+
+    def safe_regex_search(self, pattern, data, group=1, default=None):
+        try:
+            if not data:
+                return default
+            match = re.search(pattern, data, re.M | re.I)
+            return match.group(group) if match else default
+        except (AttributeError, IndexError, re.error) as exc:
+            self.warnings.append(f"Regex parsing error: {str(exc)}")
+            return default
 
 
 class Default(FactsBase):
@@ -184,32 +229,32 @@ class Default(FactsBase):
     COMMANDS = ['show version', 'show hostname']
 
     def populate(self):
-        super(Default, self).populate()
-        data = self.responses[0]
-        data_hostname = self.responses[1].replace('\n', '')
-        if data:
-            self.facts['version'] = self.parse_version(data)
-            self.facts['model'] = self.parse_model(data)
-            self.facts['image'] = self.parse_image(data)
-        if data_hostname:
-            self.facts['hostname'] = data_hostname
-        else:
-            self.facts['hostname'] = "NA"
+        try:
+            super(Default, self).populate()
+            
+            self.facts.update({
+                'version': "N/A",
+                'model': "N/A",
+                'image': "N/A",
+                'hostname': "N/A"
+            })
 
-    def parse_version(self, data):
-        match = re.search(r'^ Software Product: OcNOS, Version: (.*)', data, re.M | re.I)
-        if match:
-            return match.group(1)
+            if self.responses and len(self.responses) >= 1 and self.responses[0]:
+                data = self.responses[0]
+                self.facts['version'] = self.safe_regex_search(r'^ Software Product: OcNOS, Version: (.*)', data) or "N/A"
+                self.facts['model'] = self.safe_regex_search(r'^ Hardware Model: (.*)', data) or "N/A"
+                self.facts['image'] = self.safe_regex_search(r' Image Filename: (.*)', data) or "N/A"
 
-    def parse_model(self, data):
-        match = re.search(r'^ Hardware Model: (.*)', data, re.M | re.I)
-        if match:
-            return match.group(1)
-
-    def parse_image(self, data):
-        match = re.search(r' Image Filename: (.*)', data, re.M | re.I)
-        if match:
-            return match.group(1)
+            if self.responses and len(self.responses) >= 2 and self.responses[1]:
+                data_hostname = self.responses[1]
+                try:
+                    hostname = data_hostname.replace('\n', '').strip()
+                    self.facts['hostname'] = hostname if hostname else "N/A"
+                except (AttributeError, TypeError):
+                    self.warnings.append("Failed to parse hostname data")
+                        
+        except Exception as exc:
+            self.warnings.append(f"Error in Default facts collection: {str(exc)}")
 
 
 class Hardware(FactsBase):
@@ -224,129 +269,147 @@ class Hardware(FactsBase):
     ]
 
     def populate(self):
-        self.facts['memtotal_mb'] = "N/A"
-        self.facts['memfree_mb'] = "N/A"
-        self.facts['serialnum'] = "N/A"
-        self.facts['vendor'] = "N/A"
-        self.facts['product'] = "N/A"
-        self.facts['cpu'] = "N/A"
-        self.facts['ocnos_sensor'] = "N/A"
-        self.facts['power_led'] = "N/A"
+        self.facts.update({
+            'memtotal_mb': "N/A",
+            'memfree_mb': "N/A",
+            'serialnum': "N/A",
+            'vendor': "N/A",
+            'product': "N/A",
+            'cpu': "N/A",
+            'ocnos_sensor': "N/A",
+            'power_led': "N/A"
+        })
+        
         try:
             super(Hardware, self).populate()
 
-            data = self.responses[0]
-            if data:
+            if not self.responses:
+                self.warnings.append("No hardware command responses received")
+                return
+
+            if len(self.responses) > 0 and self.responses[0]:
+                data = self.responses[0]
                 self.facts['memtotal_mb'] = self.parse_memtotal(data)
                 self.facts['memfree_mb'] = self.parse_memfree(data)
 
-            data_boardinfo = self.responses[1]
-            if data_boardinfo:
+            if len(self.responses) > 1 and self.responses[1]:
+                data_boardinfo = self.responses[1]
                 self.facts['serialnum'] = self.parse_serialnum(data_boardinfo)
                 self.facts['vendor'] = self.parse_vendorinfo(data_boardinfo)
                 self.facts['product'] = self.parse_productname(data_boardinfo)
                 
-            data_cpu = self.responses[2]
-            data_cpuload = self.responses[3]
-            if data_cpu:
+            if len(self.responses) > 2 and self.responses[2]:
+                data_cpu = self.responses[2]
+                data_cpuload = self.responses[3] if len(self.responses) > 3 else ""
                 self.facts['cpu'] = self.parse_cpu(data_cpu, data_cpuload)
 
-            data_system = self.responses[4]
-            if data_system:
+            if len(self.responses) > 4 and self.responses[4] and "Command not supported" not in self.responses[4]:
+                data_system = self.responses[4]
                 self.facts['ocnos_sensor'] = self.parse_sensor(data_system)
 
-            data_powerled = self.responses[5]
-            if data_powerled:
+            if len(self.responses) > 5 and self.responses[5] and "Command not supported" not in self.responses[5]:
+                data_powerled = self.responses[5]
                 self.facts['power_led'] = self.parse_powerled(data_powerled)
 
-        except ConnectionError as exc:
-            pass
+        except Exception as exc:
+            self.warnings.append(f"Unexpected error in Hardware facts: {str(exc)}")
 
     def parse_memtotal(self, data):
-        match = re.search(r'^Total\s*:(.*) MB', data, re.M | re.I)
-        if match:
-            return int(match.group(1))
+        match_result = self.safe_regex_search(r'^Total\s*:(.*) MB', data)
+        return self.safe_parse_int(match_result) if match_result else "N/A"
 
     def parse_memfree(self, data):
-        match = re.search(r'^Free\s*:(.*) MB', data, re.M | re.I)
-        if match:
-            return int(match.group(1))
+        match_result = self.safe_regex_search(r'^Free\s*:(.*) MB', data)
+        return self.safe_parse_int(match_result) if match_result else "N/A"
 
     def parse_serialnum(self, data_boardinfo):
-        match = re.search(r'^Serial Number\s+: (\S+)', data_boardinfo, re.M | re.I)
-        if match:
-            return match.group(1)
+        return self.safe_regex_search(r'^Serial Number\s+: (\S+)', data_boardinfo, default="N/A")
 
     def parse_productname(self, data_boardinfo):
-        match = re.search(r'^Product Name\s+: (\S+)', data_boardinfo, re.M | re.I)
-        if match:
-            return match.group(1)
+        return self.safe_regex_search(r'^Product Name\s+: (\S+)', data_boardinfo, default="N/A")
 
     def parse_vendorinfo(self, data_boardinfo):
-        match = re.search(r'^Vendor Name\s+: (\S+)', data_boardinfo, re.M | re.I)
-        if match:
-            return match.group(1)
+        return self.safe_regex_search(r'^Vendor Name\s+: (\S+)', data_boardinfo, default="N/A")
 
     def parse_cpu(self, data_cpu, data_cpuload):
         parsed = dict()
-        for line in data_cpu.split('\n'):
-            if len(line) == 0:
-                continue
+        try:
+            if not data_cpu:
+                return parsed
+                
+            for line in data_cpu.split('\n'):
+                if len(line) == 0:
+                    continue
 
-            match = re.match(r'^Processor\s+:\s(\S+)', line)
-            if match:
-                key = match.group(1)
-                parsed[key] = line
-            else:
-                match = re.match(r'^Model\s+:\s(.+)', line)
-                if match and key:
-                    parsed[key] = match.group(1)
-                    key = None
+                match = re.match(r'^Processor\s+:\s(\S+)', line)
+                if match:
+                    key = match.group(1)
+                    parsed[key] = line
+                else:
+                    match = re.match(r'^Model\s+:\s(.+)', line)
+                    if match and key:
+                        parsed[key] = match.group(1)
+                        key = None
 
-        for line in data_cpuload.split('\n'):
-            if len(line) == 0:
-                continue
-            match = re.match(r'^CPU core (\S+) Usage\s+:\s(.+)', line)
-            if match:
-                key = match.group(1)
-                parsed[key] = { "Model": parsed[key], "Load": match.group(2) }
+            if data_cpuload:
+                for line in data_cpuload.split('\n'):
+                    if len(line) == 0:
+                        continue
+                    match = re.match(r'^CPU core (\S+) Usage\s+:\s(.+)', line)
+                    if match:
+                        key = match.group(1)
+                        if key in parsed:
+                            parsed[key] = { "Model": parsed[key], "Load": match.group(2) }
 
+        except Exception as exc:
+            self.warnings.append(f"Error parsing CPU information: {str(exc)}")
+            
         return parsed
 
-    # Parse sensor info such as temeratures for Ufi 'show system sensor'
     def parse_sensor(self, data_sensor):
         parsed = {}
-        skip = True
-        for line in data_sensor.split('\n'):
-            if skip:
-                match = re.match(r'^-+$', line)
-                if match:
-                    skip = False
-                continue
+        try:
+            if not data_sensor:
+                return parsed
                 
-            match = re.match(r'^(\S+)\s+\|\s+(\S+)\s+\|\s+([\S\s]+)\s+\|\s+(\S+)\s*\|\s+(\S+)\s+\|\s+(\S+)\s+\|\s+(\S+)\s+\|\s+(\S+)\s+\|\s+(\S+)\s+\|\s+(\S+)', line)
-            if match:
-                parsed.update({match.group(1):
-                               {"VALUE": match.group(2), "UNITS": match.group(3).rstrip(), "STATE": match.group(4),
-                                "LNR": match.group(5), "LCR": match.group(6), "LNC": match.group(7),
-                                "UNC": match.group(8), "UCR": match.group(9), "UNR": match.group(10)}})
+            skip = True
+            for line in data_sensor.split('\n'):
+                if skip:
+                    match = re.match(r'^-+$', line)
+                    if match:
+                        skip = False
+                    continue
+                    
+                match = re.match(r'^(\S+)\s+\|\s+(\S+)\s+\|\s+([\S\s]+)\s+\|\s+(\S+)\s*\|\s+(\S+)\s+\|\s+(\S+)\s+\|\s+(\S+)\s+\|\s+(\S+)\s+\|\s+(\S+)\s+\|\s+(\S+)', line)
+                if match:
+                    parsed.update({match.group(1):
+                                   {"VALUE": match.group(2), "UNITS": match.group(3).rstrip(), "STATE": match.group(4),
+                                    "LNR": match.group(5), "LCR": match.group(6), "LNC": match.group(7),
+                                    "UNC": match.group(8), "UCR": match.group(9), "UNR": match.group(10)}})
+        except Exception as exc:
+            self.warnings.append(f"Error parsing sensor information: {str(exc)}")
 
         return parsed        
 
-    # Parse power led info for Ufi 'show hardware-information led'
     def parse_powerled(self, data_powerled):
         skipcount = 2
         retvalue = dict()
-        for line in data_powerled.split('\n'):
-            if skipcount > 0:
-                match = re.match(r'^-+$', line)
-                if match:
-                    skipcount -= 1
-                continue
+        try:
+            if not data_powerled:
+                return retvalue
+                
+            for line in data_powerled.split('\n'):
+                if skipcount > 0:
+                    match = re.match(r'^-+$', line)
+                    if match:
+                        skipcount -= 1
+                    continue
 
-            match = re.match(r'^(\S+)\s+(\S+)\s+(.+)$', line)
-            if match:
-                retvalue[match.group(1)] = dict(color=match.group(2), description=match.group(3))
+                match = re.match(r'^(\S+)\s+(\S+)\s+(.+)$', line)
+                if match:
+                    retvalue[match.group(1)] = dict(color=match.group(2), description=match.group(3))
+        except Exception as exc:
+            self.warnings.append(f"Error parsing power LED information: {str(exc)}")
                 
         return retvalue
 
@@ -356,15 +419,24 @@ class Config(FactsBase):
     COMMANDS = ['show running-config']
 
     def populate(self):
-        super(Config, self).populate()
-        data = self.responses[0]
-        if data:
-            self.facts['config'] = data
+        try:
+            super(Config, self).populate()
+            self.facts['config'] = "N/A"
+            
+            if self.responses and len(self.responses) > 0 and self.responses[0] and "Command not supported" not in self.responses[0]:
+                data = self.responses[0]
+                if data and data.strip():
+                    self.facts['config'] = data
+                else:
+                    self.warnings.append("No configuration data received")
+        except Exception as exc:
+            self.warnings.append(f"Error collecting configuration: {str(exc)}")
 
 
 class Interfaces(FactsBase):
 
     COMMANDS = [
+        'show interface',
         'show interface brief',
         'show lldp neighbors detail',
         'show interface counters',
@@ -373,299 +445,328 @@ class Interfaces(FactsBase):
     ]
 
     def populate(self):
-        super(Interfaces, self).populate()
+        try:
+            super(Interfaces, self).populate()
 
-        self.facts['all_ipv4_addresses'] = list()
-        self.facts['all_ipv6_addresses'] = list()
+            self.facts.update({
+                'all_ipv4_addresses': list(),
+                'all_ipv6_addresses': list(),
+                'interfaces': dict(),
+                'neighbors': dict(),
+                'lagg': list()
+            })
 
-        data_interface_br = self.responses[0]
-        data_interface = self.populate_interface_foreach(data_interface_br)
-        data_neigh_detail = self.responses[1]
-        data_interface_counter = self.responses[2]
-        data_interface_transceiver = self.responses[3]
-        data_interface_lagg = self.responses[4]
-        if data_interface and data_interface_br:
-            interfaces = self.parse_interfaces(data_interface, data_interface_br, data_interface_counter, data_interface_transceiver)
-            self.facts['interfaces'] = self.populate_interfaces(interfaces)
-        if data_neigh_detail:
-            neighbors = self.parse_neighbors(data_neigh_detail)
-            self.facts['neighbors'] = self.populate_neighbors(neighbors)
-        if data_interface_lagg:
-            self.facts['lagg'] = self.parse_lagg(data_interface_lagg)
+            if not self.responses:
+                self.warnings.append("No interface command responses received")
+                return
+
+            if len(self.responses) >= 2 and self.responses[0] and self.responses[1]:
+                data_interface = self.responses[0]
+                data_interface_br = self.responses[1]
+                data_interface_counter = self.responses[3] if len(self.responses) > 3 else ""
+                data_interface_transceiver = self.responses[4] if len(self.responses) > 4 else ""
+                
+                if "Command not supported" not in data_interface and "Command not supported" not in data_interface_br:
+                    interfaces = self.parse_interfaces(data_interface, data_interface_br, 
+                                                     data_interface_counter, data_interface_transceiver)
+                    self.facts['interfaces'] = self.populate_interfaces(interfaces)
+
+            if len(self.responses) > 2 and self.responses[2] and "Command not supported" not in self.responses[2]:
+                data_neigh_detail = self.responses[2]
+                neighbors = self.parse_neighbors(data_neigh_detail)
+                self.facts['neighbors'] = self.populate_neighbors(neighbors)
+
+            if len(self.responses) > 5 and self.responses[5] and "Command not supported" not in self.responses[5]:
+                data_interface_lagg = self.responses[5]
+                self.facts['lagg'] = self.parse_lagg(data_interface_lagg)
+
+        except Exception as exc:
+            self.warnings.append(f"Error collecting interface facts: {str(exc)}")
 
     def populate_neighbors(self, neighbors):
         facts = dict()
-        for key, value in iteritems(neighbors):
-            neigh = dict()
-            neigh['Remote Chassis ID'] = self.parse_neigh_chasisID(value)
-            neigh['Remote Port'] = self.parse_neigh_port(value)
-            neigh['Remote System Name'] = self.parse_neigh_sysname(value)
-
-            facts[key] = neigh
+        try:
+            for key, value in iteritems(neighbors):
+                neigh = dict()
+                neigh['Remote Chassis ID'] = self.parse_neigh_chasisID(value) or "N/A"
+                neigh['Remote Port'] = self.parse_neigh_port(value) or "N/A"
+                neigh['Remote System Name'] = self.parse_neigh_sysname(value) or "N/A"
+                facts[key] = neigh
+        except Exception as exc:
+            self.warnings.append(f"Error populating neighbor facts: {str(exc)}")
 
         return facts
-
-    '''
-    Interface information are retrieved one by one for each interface
-    since some ssh transport can't handle sometimes the result of 'show interface' by its volume
-    '''
-    def populate_interface_foreach(self, interfaces_br):
-        interfaces = ''
-        for line in interfaces_br.split('\n'):
-            match = re.match(r'^(\S+).*(up|down)', line)
-            if match:
-                int_name = match.group(1)
-                interface = run_commands(self.module, "show int " + int_name, check_rc=False)
-                interfaces += interface[0] + '\n\n'
-        return interfaces
 
     def populate_interfaces(self, interfaces):
         facts = dict()
-        for key, value in iteritems(interfaces):
-            intf = dict()
-            intf['description'] = self.parse_description(value)
-            intf['macaddress'] = self.parse_macaddress(value)
-            intf['mtu'] = self.parse_mtu(value)
-            intf['bandwidth'] = self.parse_bandwidth(value)
-            intf['mediatype'] = self.parse_mediatype(value)
-            intf['duplex'] = self.parse_duplex(value)
-            intf['ipv4'] = self.parse_ipv4address(value)
-            intf['ipv6'] = self.parse_ipv6address(value)
-            intf['lineprotocol'] = self.parse_lineprotocol(value)
-            intf['portmode'] = self.parse_portmode(value)
-            intf['counter'] = self.parse_counter(value)
-            intf['transceiver'] = self.parse_transceiver(value)
-            intf['vrf'] = self.parse_VRF(value)
-            '''
-            intf['operstatus'] = self.parse_operstatus(value)
-            intf['type'] = self.parse_type(value)
-            '''
-
-            facts[key] = intf
+        try:
+            for key, value in iteritems(interfaces):
+                intf = dict()
+                intf['description'] = self.parse_description(value) or "N/A"
+                intf['macaddress'] = self.parse_macaddress(value) or "N/A"
+                intf['mtu'] = self.parse_mtu(value) or "N/A"
+                intf['bandwidth'] = self.parse_bandwidth(value) or "N/A"
+                intf['mediatype'] = self.parse_mediatype(value) or "N/A"
+                intf['duplex'] = self.parse_duplex(value) or "N/A"
+                intf['ipv4'] = self.parse_ipv4address(value)
+                intf['ipv6'] = self.parse_ipv6address(value)
+                intf['lineprotocol'] = self.parse_lineprotocol(value) or "N/A"
+                intf['portmode'] = self.parse_portmode(value) or "N/A"
+                intf['counter'] = self.parse_counter(value) or {}
+                intf['transceiver'] = self.parse_transceiver(value) or []
+                intf['vrf'] = self.parse_VRF(value) or "N/A"
+                facts[key] = intf
+        except Exception as exc:
+            self.warnings.append(f"Error populating interface facts: {str(exc)}")
+            
         return facts
 
     def parse_neigh_chasisID(self, data):
-        match = re.search(r'Chassis id type\s+: (.*)', data)
-        if match:
-            return match.group(1)
+        return self.safe_regex_search(r'Chassis id type\s+: (.*)', data)
 
     def parse_neigh_port(self, data):
-        match = re.search(r'Port id type\s+: (.*)', data)
-        if match:
-            return match.group(1)
+        return self.safe_regex_search(r'Port id type\s+: (.*)', data)
 
     def parse_neigh_sysname(self, data):
-        match = re.search(r'System Name\s+: (.*)', data)
-        if match:
-            return match.group(1)
-        else:
-            return "NA"
+        result = self.safe_regex_search(r'System Name\s+: (.*)', data)
+        return result if result else "NA"
 
     def parse_description(self, data):
-        match = re.search(r'Description: (.*)', data)
-        if match:
-            return match.group(1)
+        return self.safe_regex_search(r'Description: (.*)', data)
 
     def parse_VRF(self, data):
-        match = re.search(r'VRF Binding: Associated with (.*)', data)
-        if match:
-            return match.group(1)
+        return self.safe_regex_search(r'VRF Binding: Associated with (.*)', data)
 
     def parse_macaddress(self, data):
-        match = re.search(r'Current HW addr: (.*)', data)
-        if match:
-            return match.group(1)
+        return self.safe_regex_search(r'Current HW addr: (.*)', data)
 
     def parse_mtu(self, data):
-        match = re.search(r'mtu (\d+) ', data)
-        if match:
-            return match.group(1)
+        return self.safe_regex_search(r'mtu (\d+) ', data)
 
     def parse_ipv4address(self, data):
-        addrs = re.findall(r'inet (\S+)/(\d+)', data)
-        retaddrs = []
-        for addr in addrs:
-            self.facts['all_ipv4_addresses'].append(addr[0])
-            retaddrs.append(dict(address=addr[0], masklen=int(addr[1])))
-        return retaddrs
+        addrs = []
+        try:
+            if data:
+                matches = re.findall(r'inet (\S+)/(\d+)', data)
+                for addr in matches:
+                    self.facts['all_ipv4_addresses'].append(addr[0])
+                    addrs.append(dict(address=addr[0], masklen=int(addr[1])))
+        except Exception as exc:
+            self.warnings.append(f"Error parsing IPv4 addresses: {str(exc)}")
+        return addrs
 
     def parse_ipv6address(self, data):
-        addrs = re.findall(r'inet6 (\S+)/(\d+)', data)
-        retaddrs = []
-        for addr in addrs:
-            self.facts['all_ipv6_addresses'].append(addr[0])
-            retaddrs.append(dict(address=addr[0], masklen=int(addr[1])))
-        return retaddrs
+        addrs = []
+        try:
+            if data:
+                matches = re.findall(r'inet6 (\S+)/(\d+)', data)
+                for addr in matches:
+                    self.facts['all_ipv6_addresses'].append(addr[0])
+                    addrs.append(dict(address=addr[0], masklen=int(addr[1])))
+        except Exception as exc:
+            self.warnings.append(f"Error parsing IPv6 addresses: {str(exc)}")
+        return addrs
 
     def parse_duplex(self, data):
-        match = re.search(r'duplex-([^\s\(]*)', data)
-        if match:
-            return match.group(1)
+        return self.safe_regex_search(r'duplex-([^\s\(]*)', data)
 
     def parse_bandwidth(self, data):
-        match = re.search(r'link-speed (\S*)', data)
-        if match:
-            return match.group(1)
+        return self.safe_regex_search(r'link-speed (\S*)', data)
 
     def parse_mediatype(self, data):
-        match = re.search(r'Hardware is (\S*)', data)
-        if match:
-            return match.group(1)
+        return self.safe_regex_search(r'Hardware is (\S*)', data)
 
     def parse_lineprotocol(self, data):
-        match = re.search(r'Status (\S*)', data)
-        if match:
-            return match.group(1)
+        status = self.safe_regex_search(r'Status (up|down)', data)
+        if status:
+            return status.upper()
+        protocol_status = self.safe_regex_search(r'line protocol is (up|down)', data)
+        if protocol_status:
+            return protocol_status.upper()
+        return "N/A"
 
     def parse_portmode(self, data):
-        match = re.search(r'Port Mode is (\S*)', data)
-        if match:
-            return match.group(1)
+        return self.safe_regex_search(r'Port Mode is (\S*)', data)
 
     def parse_counter(self, data):
         parsed_counter = dict()
-        for line in re.findall(r'COUNTERS\s+([^\n]+)\n', data):
-            match = re.search('([^:]+): (\S*)', line)
-            if match:
-                parsed_counter[match.group(1)] = match.group(2)
+        try:
+            if data:
+                for line in re.findall(r'COUNTERS\s+([^\n]+)\n', data):
+                    match = re.search('([^:]+): (\S*)', line)
+                    if match:
+                        parsed_counter[match.group(1)] = match.group(2)
+        except Exception as exc:
+            self.warnings.append(f"Error parsing interface counters: {str(exc)}")
         return parsed_counter
 
     def parse_lagg(self, data):
         parsed_lagg = []
-        aggregator = dict()
-        link = []
-        for line in data.split('\n'):
-            if re.search(r'^-+$', line):
-                ## separator
-                aggregator['link'] = link
-                parsed_lagg.append(aggregator)
-                aggregator = dict()
-                link = []
-            else:
-                match = re.search('^\s+Aggregator Type: (\S+)', line)
-                if match:
-                    aggregator['AggregatorType'] = match.group(1)
-                    continue
-                match = re.search('^\s*Aggregator\s+(\S+)\s+(\S+)', line)
-                if match:
-                    aggregator['AggregatorPort'] = match.group(1)
-                    aggregator['AggregatorID'] = match.group(2)
-                    continue
-                match = re.search('^\s+Admin Key: (.+)$', line)
-                if match:
-                    aggregator['AdminKey'] = match.group(1)
-                    continue
-                match = re.search('^\s+Link: (.+) sync: (.*)$', line)
-                if match:
-                    link.append({"Link": match.group(1), "sync": match.group(2)})
-                    continue
+        try:
+            if not data:
+                return parsed_lagg
+                
+            aggregator = dict()
+            link = []
+            for line in data.split('\n'):
+                if re.search(r'^-+$', line):
+                    aggregator['link'] = link
+                    parsed_lagg.append(aggregator)
+                    aggregator = dict()
+                    link = []
+                else:
+                    match = re.search('^\s+Aggregator Type: (\S+)', line)
+                    if match:
+                        aggregator['AggregatorType'] = match.group(1)
+                        continue
+                    match = re.search('^\s*Aggregator\s+(\S+)\s+(\S+)', line)
+                    if match:
+                        aggregator['AggregatorPort'] = match.group(1)
+                        aggregator['AggregatorID'] = match.group(2)
+                        continue
+                    match = re.search('^\s+Admin Key: (.+)$', line)
+                    if match:
+                        aggregator['AdminKey'] = match.group(1)
+                        continue
+                    match = re.search('^\s+Link: (.+) sync: (.*)$', line)
+                    if match:
+                        link.append({"Link": match.group(1), "sync": match.group(2)})
+                        continue
 
-        if len(link) > 0:
-            aggregator['link'] = link
-        if len(aggregator) > 0:
-            parsed_lagg.append(aggregator)
+            if len(link) > 0:
+                aggregator['link'] = link
+            if len(aggregator) > 0:
+                parsed_lagg.append(aggregator)
+        except Exception as exc:
+            self.warnings.append(f"Error parsing LAG information: {str(exc)}")
                     
         return parsed_lagg                 
         
     def parse_transceiver(self, data):
         parsed_transceiver = []
-        for line in re.findall(r'TRANSCEIVERS[0-9]+\s+(.+)', data):
-            match = re.search('\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)', line)
-            if match:
-                parsed_lane = dict()
-                parsed_lane["DDM"] = match.group(1)
-                parsed_lane["Temp"] = match.group(2)
-                parsed_lane["Voltage"] = match.group(3)
-                parsed_lane["Lane"] = match.group(4)
-                parsed_lane["Current"] = match.group(5)
-                parsed_lane["TxPower"] = match.group(6)
-                parsed_lane["RxPower"] = match.group(7)
-                parsed_transceiver.append(parsed_lane)
-            else:
-                match = re.search('\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)', line)
+        try:
+            if not data:
+                return parsed_transceiver
+                
+            for line in re.findall(r'TRANSCEIVERS[0-9]+\s+(.+)', data):
+                match = re.search('\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)', line)
                 if match:
-                    newlane = parsed_lane.copy()
-                    newlane["Lane"] = match.group(1)
-                    newlane["Current"] = match.group(2)
-                    newlane["TxPower"] = match.group(3)
-                    newlane["RxPower"] = match.group(4)
-                    parsed_transceiver.append(newlane)
+                    parsed_lane = dict()
+                    parsed_lane["DDM"] = match.group(1)
+                    parsed_lane["Temp"] = match.group(2)
+                    parsed_lane["Voltage"] = match.group(3)
+                    parsed_lane["Lane"] = match.group(4)
+                    parsed_lane["Current"] = match.group(5)
+                    parsed_lane["TxPower"] = match.group(6)
+                    parsed_lane["RxPower"] = match.group(7)
+                    parsed_transceiver.append(parsed_lane)
+                else:
+                    match = re.search('\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)', line)
+                    if match and parsed_transceiver:
+                        newlane = parsed_transceiver[-1].copy()
+                        newlane["Lane"] = match.group(1)
+                        newlane["Current"] = match.group(2)
+                        newlane["TxPower"] = match.group(3)
+                        newlane["RxPower"] = match.group(4)
+                        parsed_transceiver.append(newlane)
+        except Exception as exc:
+            self.warnings.append(f"Error parsing transceiver information: {str(exc)}")
 
         return parsed_transceiver
 
     def parse_neighbors(self, neighbors):
         parsed = dict()
-        key = ''
-
-        neighbors = ''.join(neighbors)
-        for line in neighbors.split('\n'):
-            if len(line) == 0:
-                continue
-            if line[0] == ' ':
-                if key:
-                    parsed[key] += '\n%s' % line
-            else:
-                match = re.match(r'^Interface Name\s+:\s(\S+)', line)
-                if match:
-                    key = match.group(1)
-                    parsed[key] = line
+        try:
+            if not neighbors:
+                return parsed
+                
+            key = ''
+            neighbors = ''.join(neighbors)
+            for line in neighbors.split('\n'):
+                if len(line) == 0:
+                    continue
+                if line[0] == ' ':
+                    if key:
+                        parsed[key] += '\n%s' % line
+                else:
+                    match = re.match(r'^Interface Name\s+:\s(\S+)', line)
+                    if match:
+                        key = match.group(1)
+                        parsed[key] = line
+        except Exception as exc:
+            self.warnings.append(f"Error parsing neighbor information: {str(exc)}")
 
         return parsed
 
     def parse_interfaces(self, data_int, data_int_br, data_int_counter, data_int_tr):
         parsed = dict()
-        key = ''
+        try:
+            key = ''
 
-        data_int = ''.join(data_int)
-        for line in data_int.split('\n'):
-            if len(line) == 0:
-                continue
-            if line[0] == ' ':
-                parsed[key] += '\n%s' % line
-            else:
-                match = re.match(r'^Interface\s+(.*)', line)
-                if match:
-                    key = match.group(1)
-                    parsed[key] = line
+            if data_int:
+                data_int = ''.join(data_int)
+                for line in data_int.split('\n'):
+                    if len(line) == 0:
+                        continue
+                    if line[0] == ' ':
+                        if key:
+                            parsed[key] += '\n%s' % line
+                    else:
+                        match = re.match(r'^Interface (.*)', line)
+                        if match:
+                            key = match.group(1)
+                            parsed[key] = line
 
-        for line in data_int_br.split('\n'):
-            match = re.match(r'^(\S+).*(up|down)', line)
-            if match:
-                key = match.group(1)
-                parsed[key] += '\nStatus %s' % match.group(2)
+            if data_int_br:
+                for line in data_int_br.split('\n'):
+                    match = re.match(r'^(\S+)\s+\S+\s+\S+\s+(up|down)\s+', line)
+                    if not match:
+                        match = re.match(r'^(\S+).*(up|down)', line)
+                    if match:
+                        key = match.group(1)
+                        status = match.group(2).upper()
+                        if key in parsed:
+                            parsed[key] += '\nStatus %s' % status
 
-        key = ''
-        data_int_counter = ''.join(data_int_counter)
-        for line in data_int_counter.split('\n'):
-            if len(line) == 0:
+            if data_int_counter:
                 key = ''
-                continue
-            if key and line[0] == ' ':
-                parsed[key] += '\nCOUNTERS %s' % line
-            else:
-                match = re.match(r'^Interface (.*)', line)
-                if match and match.group(1) != "CPU":
-                    key = match.group(1)
+                data_int_counter = ''.join(data_int_counter)
+                for line in data_int_counter.split('\n'):
+                    if len(line) == 0:
+                        key = ''
+                        continue
+                    if key and line[0] == ' ':
+                        if key in parsed:
+                            parsed[key] += '\nCOUNTERS %s' % line
+                    else:
+                        match = re.match(r'^Interface (.*)', line)
+                        if match and match.group(1) != "CPU":
+                            key = match.group(1)
 
-        key = ''
-        data_int_tr = ''.join(data_int_tr)
-        lanenum = 0
-        skip = True
-        for line in data_int_tr.split('\n'):
-            if skip:
-                match = re.match(r'^-+$', line)
-                if (match):
-                    skip = False
-                continue
-
-            match = re.match(r'^(\S+)\s+(.*)$', line)
-            if match:
-                key = match.group(1)
+            if data_int_tr:
+                key = ''
+                data_int_tr = ''.join(data_int_tr)
                 lanenum = 0
-                parsed[key] += '\nTRANSCEIVERS%d %s' % (lanenum, match.group(2))
-            elif line[0] == ' ':
-                lanenum += 1
-                parsed[key] += '\nTRANSCEIVERS%d %s' % (lanenum, line)
+                skip = True
+                for line in data_int_tr.split('\n'):
+                    if skip:
+                        match = re.match(r'^-+$', line)
+                        if (match):
+                            skip = False
+                        continue
+                        
+                    match = re.match(r'^(\S+)\s+(.*)$', line)
+                    if match:
+                        key = match.group(1)
+                        lanenum = 0
+                        if key in parsed:
+                            parsed[key] += '\nTRANSCEIVERS%d %s' % (lanenum, match.group(2))
+                    elif line[0] == ' ' and key:
+                        lanenum += 1
+                        if key in parsed:
+                            parsed[key] += '\nTRANSCEIVERS%d %s' % (lanenum, line)
+        except Exception as exc:
+            self.warnings.append(f"Error parsing interface data: {str(exc)}")
 
         return parsed
 
@@ -679,74 +780,85 @@ FACT_SUBSETS = dict(
 
 VALID_SUBSETS = frozenset(FACT_SUBSETS.keys())
 
-PERSISTENT_COMMAND_TIMEOUT = 60
-
 
 def main():
-    """main entry point for module execution
-    """
     argument_spec = dict(
         gather_subset=dict(default=['!config'], type='list')
     )
-
     argument_spec.update(ocnos_argument_spec)
 
     module = AnsibleModule(argument_spec=argument_spec,
-                           supports_check_mode=True)
+                         supports_check_mode=True)
 
-    gather_subset = module.params['gather_subset']
+    try:
+        gather_subset = module.params['gather_subset']
 
-    runable_subsets = set()
-    exclude_subsets = set()
+        runable_subsets = set()
+        exclude_subsets = set()
 
-    for subset in gather_subset:
-        if subset == 'all':
-            runable_subsets.update(VALID_SUBSETS)
-            continue
-
-        if subset.startswith('!'):
-            subset = subset[1:]
+        for subset in gather_subset:
             if subset == 'all':
-                exclude_subsets.update(VALID_SUBSETS)
+                runable_subsets.update(VALID_SUBSETS)
                 continue
-            exclude = True
-        else:
-            exclude = False
 
-        if subset not in VALID_SUBSETS:
-            module.fail_json(msg='Bad subset')
+            if subset.startswith('!'):
+                subset = subset[1:]
+                if subset == 'all':
+                    exclude_subsets.update(VALID_SUBSETS)
+                    continue
+                exclude = True
+            else:
+                exclude = False
 
-        if exclude:
-            exclude_subsets.add(subset)
-        else:
-            runable_subsets.add(subset)
+            if subset not in VALID_SUBSETS:
+                module.fail_json(msg=f'Invalid subset specified: {subset}. Valid subsets are: {", ".join(VALID_SUBSETS)}')
 
-    if not runable_subsets:
-        runable_subsets.update(VALID_SUBSETS)
+            if exclude:
+                exclude_subsets.add(subset)
+            else:
+                runable_subsets.add(subset)
 
-    runable_subsets.difference_update(exclude_subsets)
-    runable_subsets.add('default')
+        if not runable_subsets:
+            runable_subsets.update(VALID_SUBSETS)
 
-    facts = dict()
-    facts['gather_subset'] = list(runable_subsets)
+        runable_subsets.difference_update(exclude_subsets)
+        runable_subsets.add('default')
 
-    instances = list()
-    for key in runable_subsets:
-        instances.append(FACT_SUBSETS[key](module))
+        facts = dict()
+        facts['gather_subset'] = list(runable_subsets)
 
-    for inst in instances:
-        inst.populate()
-        facts.update(inst.facts)
+        instances = list()
+        warnings = list()
+        
+        for key in runable_subsets:
+            try:
+                instance = FACT_SUBSETS[key](module)
+                instances.append(instance)
+            except Exception as exc:
+                warnings.append(f"Failed to initialize {key} facts collector: {str(exc)}")
 
-    ansible_facts = dict()
-    for key, value in iteritems(facts):
-        key = 'ansible_net_%s' % key
-        ansible_facts[key] = value
+        for inst in instances:
+            try:
+                inst.populate()
+                facts.update(inst.facts)
+                if hasattr(inst, 'warnings'):
+                    warnings.extend(inst.warnings)
+            except Exception as exc:
+                warnings.append(f"Failed to populate facts for {inst.__class__.__name__}: {str(exc)}")
 
-    warnings = list()
-    check_args(module, warnings)
+        ansible_facts = dict()
+        for key, value in iteritems(facts):
+            try:
+                ansible_facts['ansible_net_%s' % key] = value
+            except Exception as exc:
+                warnings.append(f"Failed to process fact key {key}: {str(exc)}")
 
-    module.exit_json(ansible_facts=ansible_facts, warnings=warnings)
+        check_args(module, warnings)
+        module.exit_json(ansible_facts=ansible_facts, warnings=warnings)
+
+    except Exception as exc:
+        module.fail_json(msg=f"Unexpected error in main execution: {str(exc)}", 
+                        exception=traceback.format_exc())
 
 
 if __name__ == '__main__':
