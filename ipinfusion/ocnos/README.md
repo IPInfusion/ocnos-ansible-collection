@@ -1,3 +1,8 @@
+## License
+
+This project is licensed under the GNU General Public License v3.0 (GPL-3.0).  
+You may obtain a copy of the license at [LICENSE](LICENSE) or from [https://www.gnu.org/licenses/gpl-3.0.txt](https://www.gnu.org/licenses/gpl-3.0.txt).
+
 # IP Infusion OcNOS Ansible Collection
 
 Ansible collection for automating IP Infusion OcNOS.
