@@ -1,0 +1,34 @@
+{
+ "collection_info": {
+  "namespace": "ipinfusion",
+  "name": "ocnos",
+  "version": "1.2.5",
+  "authors": [
+   "Sharath Samanth <sharath.samanth@ipinfusion.com>"
+  ],
+  "readme": "README.md",
+  "tags": [
+   "networking",
+   "backup",
+   "plugin"
+  ],
+  "description": "Collection Containing OcNOS Modules for config backup, software update etc..",
+  "license": [
+   "GPL-3.0-or-later"
+  ],
+  "license_file": null,
+  "dependencies": {},
+  "repository": null,
+  "documentation": null,
+  "homepage": null,
+  "issues": null
+ },
+ "file_manifest_file": {
+  "name": "FILES.json",
+  "ftype": "file",
+  "chksum_type": "sha256",
+  "chksum_sha256": "a8243ce3fc5f29465b6ff6b203afc430686804ebbcd5d404eaf88bb1e0be29b2",
+  "format": 1
+ },
+ "format": 1
+}

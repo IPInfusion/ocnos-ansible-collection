@@ -1,8 +1,3 @@
-## License
-
-This project is licensed under the GNU General Public License v3.0 (GPL-3.0).  
-You may obtain a copy of the license at the LICENSE file or from [https://www.gnu.org/licenses/gpl-3.0.txt](https://www.gnu.org/licenses/gpl-3.0.txt).
-
 # IP Infusion OcNOS Ansible Collection
 
 Ansible collection for automating IP Infusion OcNOS.
@@ -98,10 +93,48 @@ ocnos_bgp_facts collects information about BGP. Currently, this modules supports
 ## ocnos_isis_facts
 ocnos_isis_facts collects information about ISIS. Currently, this modules supports only ISIS neighbor.
 
+## ocnos_config_backup
+Backup the running configuration of OcNOS Devices into a remote location.
+The Module Supports both Virtual Machine and Physical Devices.
+The Module only supports SCP and FTP Copy Methods.
+
+## ocnos_config_restore
+Restore the OcNOS Configurations from a Remote Location to the Startup Config of OcNOS Devices and Reboots.
+The Module Support both VMs and Physical Devices and Supports only SCP and FTP Copy Methods.
+
+## ocnos_iperf3
+Configures IPERF3 on OcNOS Devices either as a server or as a Client.
+The Module Support both VMs and Physical Devices.
+This Module is to be used only for Testing and not to be enabled on Production Devices.
+IPERF3 Traffic in OcNOS is rate limited to 20Mbps only.
+
+## ocnos_pcap
+Captures Packet on Provided interfaces using Tshark and copies into a remote location.
+The Module only captures those packets that are punted to CPU (Control Plane Packets).
+The Module support both VMs and Physical Devices.
+
+## ocnos_core_extract
+This Module extracts the core files and copies the GDB Logs into a remote location.
+This Module Supports both VMs and Physical Devices and supports only SCP and FTP Copy methods.
+
+## ocnos_ts_extract
+This Module extracts the Tech Support Files and copies into a remote location.
+This Module Supports both VMs and Physical Devices and supports only SCP and FTP Copy methods.
+
+## ocnos_sw_update
+This Module updates the OcNOS Software of the Physical Devices.
+The Module uses OcNOS sys-update function and only supports http method for image copy operation.
+
+## ocnos_validate
+This Module compares the TextFSM output of OcNOS with provided inputs.
+The Module returns a list of missing entries between Actual Output and Expected Output.
+
 
 Please refer the IPI provided documents for the detail.
 
 # Version history
+- 1.2.5
+  - Additional Action Plugins for OcNOS for Software Update, Config Backup, Packet Capture, TechSupport and Core Extraction
 - 1.2.3
   - Avoid error when ocnos_facts is used with ansible_pylibssh
 - 1.2.2
