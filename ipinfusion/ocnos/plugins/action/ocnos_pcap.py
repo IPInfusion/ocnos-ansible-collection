@@ -1,4 +1,4 @@
-# Copyright (C) 2025 IP Infusion
+# Copyright (C) 2019 IP Infusion
 #
 # GNU General Public License v3.0+
 #
@@ -9,7 +9,7 @@
 #
 # (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 #
-# Contains Action Plugin methods for OcNOS Config Backup Module
+# Contains Action Plugin methods for OcNOS Packet Capture Module
 # IP Infusion
 #
 
@@ -29,7 +29,7 @@ class ActionModule(ActionBase):
         
         inventory_hostname = task_vars.get('inventory_hostname')
 
-        required_args = ['remote_host', 'remote_path', 'remote_username', 'remote_password']
+        required_args = ['remote_host', 'remote_path', 'remote_username', 'remote_password','capture_interfaces','capture_timeout']
         missing_args = [arg for arg in required_args if self._task.args.get(arg) is None]
 
         if missing_args:
@@ -42,6 +42,8 @@ class ActionModule(ActionBase):
         remote_password = self._task.args.get('remote_password')
         node_type = self._task.args.get('node_type','physical')
         trans = self._task.args.get('transport','scp')
+        capture_interfaces = self._task.args.get('capture_interfaces')
+        capture_timeout = self._task.args.get('capture_timeout')
 
         if trans == 'scp' or trans =='ftp':
             pass
@@ -66,12 +68,12 @@ class ActionModule(ActionBase):
 
         result = {'changed': False, 'copied_files': [], 'failed': False}
 
-        #Handle SSH Proxy or Jump Server Setting
         proxy_cmd = (
                 self._task.args.get('ansible_ssh_common_args')
                 or task_vars.get('ansible_ssh_common_args')
-        )
-       
+        )        
+
+        #Handle SSH Proxy or Jump Server Setting
         if proxy_cmd:
             proxy_cmd = proxy_cmd.strip()
 
@@ -85,39 +87,68 @@ class ActionModule(ActionBase):
             proxy_cmd = proxy_cmd.replace("%h", host).replace("%p", port)
 
             connection_dict['sock'] = ProxyCommand(proxy_cmd)
-
+        
         try:
             # Try to establish a connection to the DUT using netmiko 
             session = ConnectHandler(**connection_dict)
-            
+
             #Enter into Debian Linux
             session.enable()
+
+            #Enter the OcNOS Debian Shell
+            session.send_command('start-shell',expect_string='$')
+
+            #Escalate Privliges to root for capture using tshark
+            session.send_command('su -',expect_string='Password:')
+            session.send_command('root',expect_string='#')
+
+            #Function to get the tshark PIDs (stale or old) if running and kill it before starting new.
+            def get_and_kill_tshark_pids():
+                raw_ts_pids = session.send_command('pidof tshark')
+                ts_pids = re.sub(r'\x1B\[[0-?]*[ -/]*[@-~]', '', raw_ts_pids).strip()
+                for pids in ts_pids.split():
+                    session.send_command(f'kill -9 {pids}')
+                    time.sleep(2)
+
+            # Make sure the stale tshark pids are killed
+            get_and_kill_tshark_pids()
+
+            #construct tshark string based on the input interface
+            ts_string = []
+            for interfaces in capture_interfaces.split():
+                ts_string.append(f"tshark -i {interfaces} -w /var/log/{inventory_hostname}_{interfaces}.pcap >/dev/null 2> /dev/null &")
             
             time_stamp = str(datetime.now()).split('.')[0].replace(' ','_')
-            cmd_list = []
 
-            json_cmd = f'show json running > /var/log/{inventory_hostname}.json'
-            cmd_list.append(json_cmd)
-            xml_cmd = f'show xml running > /var/log/{inventory_hostname}.xml'
-            cmd_list.append(xml_cmd)
-            cli_cmd =  f'show running > /var/log/{inventory_hostname}.cfg'
-            cmd_list.append(cli_cmd)
-            
             def time_stamper(file, time_stamp):
                 m = file.split('.')
                 m.insert(1,time_stamp)
                 file_name = m[0]+'_'+m[1]+'.'+m[2]
                 return file_name
             
-            for cmds in cmd_list:
-                display.display(f'dumping {cmds}')
-                session.send_command(cmds)
-                time.sleep(60)
-            
-            file_list = [f'{inventory_hostname}.json', f'{inventory_hostname}.xml', f'{inventory_hostname}.cfg']
+            for strings in ts_string:
+                display.display(f'Capture Started on {strings.split()[2]}')
+                session.send_command(strings)
+                time.sleep(1)
+
+            #wait for packet capture to complete and then kill the tshark PIDs
+            display.display(f'Waiting for {capture_timeout} seconds for Captures to complete')
+            time.sleep(capture_timeout)
+           
+            # cleanup the tshark pids
+            get_and_kill_tshark_pids()
+
+            #come back to ocnos prompt
+            session.send_command('exit',expect_string='$')
+            session.send_command('exit',expect_string='#')
+
+            # File Copy operation to remote locations
+            file_list = []
+            for interface_caps in capture_interfaces.split():
+                file_list.append(f'{inventory_hostname}_{interface_caps}.pcap')
             state = 1
             copy_list = []
-            result['output'] = ''
+        
 
             for file in file_list:
                 export_file = time_stamper(file,time_stamp)
@@ -126,13 +157,11 @@ class ActionModule(ActionBase):
                     copy_cmd = f'copy filepath /var/log/{file} {trans} {trans}://{remote_username}:{remote_password}@{remote_host}{remote_path}/{export_file}'
                 else:
                     copy_cmd = f'copy filepath /var/log/{file} {trans} {trans}://{remote_username}:{remote_password}@{remote_host}{remote_path}/{export_file} vrf management'
-                display.display(copy_cmd)
                 output = session.send_command(copy_cmd, expect_string='#', read_timeout=60)
-                display.display(f'copying file {file} to {remote_host} and then wait for 2 seconds')
-                time.sleep(2)
+                display.display(f'copying file {file} to {remote_host} and then wait for 5 seconds')
+                time.sleep(5)
                 if "Copy Success" in output or "copy success" in output.lower():
                     state = 0
-                    result['output'] += output
             
                 if state:
                     raise AnsibleError(f"Copy failed for {file}: {output}")    
@@ -140,8 +169,8 @@ class ActionModule(ActionBase):
                     result['changed'] = True
         
             result['copied_files'].append(copy_list)
-            result['backup_location'] = f'{remote_path}@{remote_host}'
+            session.disconnect()
         
         except Exception as e:
-            raise AnsibleError(f"OcNOS Configuration Backup failed: {str(e)}")
+            raise AnsibleError(f"OcNOS Packet Capture failed: {str(e)}")
         return result        

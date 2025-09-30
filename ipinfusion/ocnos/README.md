@@ -98,10 +98,39 @@ ocnos_bgp_facts collects information about BGP. Currently, this modules supports
 ## ocnos_isis_facts
 ocnos_isis_facts collects information about ISIS. Currently, this modules supports only ISIS neighbor.
 
+## ocnos_config_backup
+Action Plugin that copies OcNOS Running Configuration into a remote location.
+
+## ocnos_config_restore
+Action Plugin that copies a configuration file from remote location to OcNOS Startup configuration.
+
+## ocnos_pcap
+Action Plugin that Captures OcNOS Interface's control plane packets and copy into remote location.
+
+## ocnos_sw_update
+Action Plugin that updates the OcNOS Software using sys-update http method.
+
+## ocnos_core_extract
+Action Plugin that extracts crash files (Cores) and exports the GDB Log into remote location.
+
+## ocnos_ts_extract
+Action Plugin that extracts OcNOS TechSupport files and exports into remote location.
+
+## ocnos_iperf3
+Action Plugin that enables IPERF3 on OcNOS Devices either as a server or as a client.
+This plugin is strictly for testing purposes and not recommended for Production Deployments.
+OcNOS Rate Limits the CPU packets to 20Mbps
+
+## ocnos_validate
+Action Plugin that compares the Actual Output and the Expected Output of OcNOS Show commands.
 
 Please refer the IPI provided documents for the detail.
 
 # Version history
+- 1.2.5
+  - OcNOS Action Plugins for SW Update, Configuration Backup and Restore, TechSupport Copy, Packet Capture
+- 1.2.4
+  - OcNOS Facts Module Error Handling
 - 1.2.3
   - Avoid error when ocnos_facts is used with ansible_pylibssh
 - 1.2.2
