@@ -62,6 +62,9 @@ ignored_errors = [
         re.compile(r"%% RT cannot be configured without RD configured"),
         re.compile(r"%%VNID already mapped to access-if"),
         re.compile(r"%% All dynamic routes on this physical port will be lost due to this ESI/system mac change"),
+        # Idempotent re-runs: the device already holds the requested state (issue #12)
+        re.compile(r"%% Already disabled by default"),
+        re.compile(r"%% Given configuration already exists"),
 ]
 
 
